@@ -55,6 +55,8 @@ Resources:
     Properties:
       Handler: src/handlers/put-item.putItemHandler
       Runtime: nodejs14.x
+      Layers:
+        - !Ref HelpersLayer
       Architectures:
         - x86_64
       MemorySize: 128

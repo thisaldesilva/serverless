@@ -1,5 +1,6 @@
 // Import required libraries 
 const crypto = require('crypto');
+const ValidationHandler = require("validationHandler")
 
 // Create a DocumentClient that represents the query to add an item
 const dynamodb = require('aws-sdk/clients/dynamodb');
@@ -41,7 +42,7 @@ exports.putItemHandler = async (event) => {
     } catch (ResourceNotFoundException) {
         response = {
             statusCode: 404,
-            body: "Unable to call DynamoDB. Table resource not found."
+            body: "Invalid input or Unable to call DynamoDB. Table resource not found."
         };
     }
 
