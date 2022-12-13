@@ -1,0 +1,129 @@
+# This is the SAM template that represents the architecture of the serverless application as IAC
+
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  NimoTest
+
+Transform:
+- AWS::Serverless-2016-10-31
+
+# Parameter to use 
+Parameters:
+  FromMailIdentityName:
+    Type: String
+
+Resources:
+  #library - layers
+  HelpersLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: NimoAppHelpers
+      Description: This layer will have common function that are used in multiple Lambda functions
+      ContentUri: ./src/helpers-layers
+      CompatibleRuntimes:
+        - nodejs14.x
+
+  # This is a Lambda function config associated with the source code: get-by-id.js
+  getByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/get-by-id.getByIdHandler
+      Runtime: nodejs14.x
+      Architectures:
+        - x86_64
+      MemorySize: 128
+      Timeout: 100
+      Description: A simple example includes a HTTP get method to get one item by id from a DynamoDB table.
+      Policies:
+        # Give Create/Read/Update/Delete Permissions to the PriceRequestTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PriceRequestTable
+      Environment:
+        Variables:
+          # Make table name accessible as environment variable from function code during execution
+          PRICE_REQUEST_TABLE: !Ref PriceRequestTable
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /history/{id}
+            Method: GET
+
+  # This is a Lambda function config associated with the source code: put-item.js
+  putItemFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/put-item.putItemHandler
+      Runtime: nodejs14.x
+      Architectures:
+        - x86_64
+      MemorySize: 128
+      Timeout: 100
+      Description: A simple example includes a HTTP post method to add one item to a DynamoDB table.
+      Policies:
+        # Give Create/Read/Update/Delete Permissions to the PriceRequestTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PriceRequestTable
+      Environment:
+        Variables:
+          # Make table name accessible as environment variable from function code during execution
+          PRICE_REQUEST_TABLE: !Ref PriceRequestTable
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /requestprice
+            Method: POST
+
+  # This is a Lambda function config associated with the source code: send-email.js
+  sendEmailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/send-email.sendEmailHandler
+      Runtime: nodejs14.x
+      Layers:
+        - !Ref HelpersLayer
+      Architectures:
+        - x86_64
+      MemorySize: 128
+      Timeout: 100
+      Description: Event driven from DynamoDB streams to send emails to clients
+      Environment:
+        Variables:
+          FROM_EMAIL_ADDRESS: !Ref FromMailIdentityName
+      Policies:
+        - SESCrudPolicy:
+            IdentityName: "*"
+      Events:
+        Stream:
+          Type: DynamoDB
+          Properties: 
+            Stream: !GetAtt PriceRequestTable.StreamArn
+            BatchSize: 1
+            StartingPosition: LATEST
+
+
+  # DynamoDB table to store item: {id: &lt;ID&gt;, name: &lt;NAME&gt;}
+  PriceRequestTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: investorId
+          AttributeType: S
+        - AttributeName: time
+          AttributeType: S
+      KeySchema:
+        - AttributeName: investorId
+          KeyType: HASH
+        - AttributeName: time
+          KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 2
+        WriteCapacityUnits: 2
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+
+Outputs:
+  WebEndpoint:
+    Description: "API Gateway endpoint URL for Prod stage"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"

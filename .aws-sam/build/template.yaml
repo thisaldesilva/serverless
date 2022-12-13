@@ -1,0 +1,128 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: NimoTest
+Transform:
+- AWS::Serverless-2016-10-31
+Parameters:
+  FromMailIdentityName:
+    Type: String
+Resources:
+  HelpersLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: NimoAppHelpers
+      Description: This layer will have common function that are used in multiple
+        Lambda functions
+      ContentUri: ../../src/helpers-layers
+      CompatibleRuntimes:
+      - nodejs14.x
+  getByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/get-by-id.getByIdHandler
+      Runtime: nodejs14.x
+      Architectures:
+      - x86_64
+      MemorySize: 128
+      Timeout: 100
+      Description: A simple example includes a HTTP get method to get one item by
+        id from a DynamoDB table.
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: PriceRequestTable
+      Environment:
+        Variables:
+          PRICE_REQUEST_TABLE:
+            Ref: PriceRequestTable
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /history/{id}
+            Method: GET
+      CodeUri: getByIdFunction
+    Metadata:
+      SamResourceId: getByIdFunction
+  putItemFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/put-item.putItemHandler
+      Runtime: nodejs14.x
+      Architectures:
+      - x86_64
+      MemorySize: 128
+      Timeout: 100
+      Description: A simple example includes a HTTP post method to add one item to
+        a DynamoDB table.
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: PriceRequestTable
+      Environment:
+        Variables:
+          PRICE_REQUEST_TABLE:
+            Ref: PriceRequestTable
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /requestprice
+            Method: POST
+      CodeUri: putItemFunction
+    Metadata:
+      SamResourceId: putItemFunction
+  sendEmailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/send-email.sendEmailHandler
+      Runtime: nodejs14.x
+      Layers:
+      - Ref: HelpersLayer
+      Architectures:
+      - x86_64
+      MemorySize: 128
+      Timeout: 100
+      Description: Event driven from DynamoDB streams to send emails to clients
+      Environment:
+        Variables:
+          FROM_EMAIL_ADDRESS:
+            Ref: FromMailIdentityName
+      Policies:
+      - SESCrudPolicy:
+          IdentityName: '*'
+      Events:
+        Stream:
+          Type: DynamoDB
+          Properties:
+            Stream:
+              Fn::GetAtt:
+              - PriceRequestTable
+              - StreamArn
+            BatchSize: 1
+            StartingPosition: LATEST
+      CodeUri: sendEmailFunction
+    Metadata:
+      SamResourceId: sendEmailFunction
+  PriceRequestTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+      - AttributeName: investorId
+        AttributeType: S
+      - AttributeName: time
+        AttributeType: S
+      KeySchema:
+      - AttributeName: investorId
+        KeyType: HASH
+      - AttributeName: time
+        KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 2
+        WriteCapacityUnits: 2
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+Outputs:
+  WebEndpoint:
+    Description: API Gateway endpoint URL for Prod stage
+    Value:
+      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/
